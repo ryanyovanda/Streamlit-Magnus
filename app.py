@@ -179,26 +179,38 @@ if uploaded_csv:
         st.subheader("Relative Power per Channel")
         st.dataframe(rel_df, use_container_width=True)
 
-        st.markdown("### 💾 Download Processed EEG Data")
-        st.download_button(
-            label="⬇️ Download Filtered EEG CSV",
-            data=filtered_df.to_csv(index=False).encode("utf-8"),
-            file_name=f"filtered_eeg_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-            mime="text/csv"
-        )
+        st.markdown("### 📝 Enter Your Name for File Export")
+        user_name = st.text_input("Name (used for filename)", value="", placeholder="e.g. Ryan")
 
-        st.download_button(
-            label="⬇️ Download Absolute Power CSV",
-            data=abs_df.to_csv(index=False).encode("utf-8"),
-            file_name="eeg_absolute_stats.csv",
-            mime="text/csv"
-        )
-        st.download_button(
-            label="⬇️ Download Relative Power CSV",
-            data=rel_df.to_csv(index=False).encode("utf-8"),
-            file_name="eeg_relative_stats.csv",
-            mime="text/csv"
-        )
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+        input_filename = uploaded_csv.name.rsplit('.', 1)[0] if uploaded_csv else "EEG"
+
+        if user_name.strip() == "":
+            st.warning("⚠️ Please enter your name to enable download.")
+        else:
+            base_name = f"{user_name}_OtakQu_Muse_{timestamp}"
+
+            st.markdown("### 💾 Download Processed EEG Data")
+            st.download_button(
+                label="⬇️ Download Filtered EEG CSV",
+                data=filtered_df.to_csv(index=False).encode("utf-8"),
+                file_name=f"{base_name}.csv",
+                mime="text/csv"
+            )
+
+            st.download_button(
+                label="⬇️ Download Absolute Power CSV",
+                data=abs_df.to_csv(index=False).encode("utf-8"),
+                file_name=f"{base_name}_ABS.csv",
+                mime="text/csv"
+            )
+
+            st.download_button(
+                label="⬇️ Download Relative Power CSV",
+                data=rel_df.to_csv(index=False).encode("utf-8"),
+                file_name=f"{base_name}_REL.csv",
+                mime="text/csv"
+            )
 
 else:
     st.info("📥 Please upload your raw Muse 2 EEG CSV file to begin.")
