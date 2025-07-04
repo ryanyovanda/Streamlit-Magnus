@@ -166,37 +166,55 @@ if uploaded_csv:
                 )), use_container_width=True, key=f"{band}_rel")
 
     elif page == "Details & Downloads":
-        st.header("📊 Channel Power Table")
-        st.subheader("Absolute Power per Channel")
-        st.dataframe(abs_df, use_container_width=True)
+            st.header("📊 Channel Power Table")
 
-        st.subheader("Relative Power per Channel")
-        st.dataframe(rel_df, use_container_width=True)
+            # Round values to 3 decimals
+            rounded_abs_df = abs_df.copy()
+            rounded_rel_df = rel_df.copy()
+            rounded_abs_df[band_cols] = rounded_abs_df[band_cols].round(3)
+            rounded_rel_df[band_cols] = rounded_rel_df[band_cols].round(3)
 
-        st.markdown("### 📝 Enter Your Name for File Export")
-        user_name = st.text_input("Name (used for filename)", value="", placeholder="e.g. Ryan")
+            # Format for display (show trailing 0s like 0.150)
+            display_abs_df = rounded_abs_df.copy()
+            display_rel_df = rounded_rel_df.copy()
+            display_abs_df[band_cols] = display_abs_df[band_cols].applymap(lambda x: f"{x:.3f}")
+            display_rel_df[band_cols] = display_rel_df[band_cols].applymap(lambda x: f"{x:.3f}")
 
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-        input_filename = uploaded_csv.name.rsplit('.', 1)[0] if uploaded_csv else "EEG"
+            # --- Show rounded tables with full 3-digit formatting
+            st.subheader("Absolute Power per Channel")
+            st.dataframe(display_abs_df, use_container_width=True)
 
-        if user_name.strip() == "":
-            st.warning("⚠️ Please enter your name to enable download.")
-        else:
-            base_name = f"{user_name}_OtakQu_MindMonitor_{timestamp}"
+            st.subheader("Relative Power per Channel")
+            st.dataframe(display_rel_df, use_container_width=True)
 
-            st.markdown("### 💾 Download Processed EEG Data")
-            st.download_button(
-                label="⬇️ Download Absolute Power CSV",
-                data=abs_df.to_csv(index=False).encode("utf-8"),
-                file_name=f"{base_name}_ABS.csv",
-                mime="text/csv"
-            )
+            # --- Export section
+            st.markdown("### 📝 Enter Your Name for File Export")
+            user_name = st.text_input("Name (used for filename)", value="", placeholder="e.g. Ryan")
 
-            st.download_button(
-                label="⬇️ Download Relative Power CSV",
-                data=rel_df.to_csv(index=False).encode("utf-8"),
-                file_name=f"{base_name}_REL.csv",
-                mime="text/csv"
-            )
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+            input_filename = uploaded_csv.name.rsplit('.', 1)[0] if uploaded_csv else "EEG"
+
+            if user_name.strip() == "":
+                st.warning("⚠️ Please enter your name to enable download.")
+            else:
+                base_name = f"{user_name}_OtakQu_MindMonitor_{timestamp}"
+
+                st.markdown("### 💾 Download Processed EEG Data")
+
+                st.download_button(
+                    label="⬇️ Download Absolute Power CSV",
+                    data=rounded_abs_df.to_csv(index=False).encode("utf-8"),
+                    file_name=f"{base_name}_ABS.csv",
+                    mime="text/csv"
+                )
+
+                st.download_button(
+                    label="⬇️ Download Relative Power CSV",
+                    data=rounded_rel_df.to_csv(index=False).encode("utf-8"),
+                    file_name=f"{base_name}_REL.csv",
+                    mime="text/csv"
+                )
+
+
 else:
     st.info("📥 Please upload your EEG MindMonitor CSV file to begin.")

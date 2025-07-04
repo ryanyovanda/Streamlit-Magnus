@@ -252,12 +252,30 @@ if uploaded_csv:
 
     elif page == "Details & Downloads":
         st.header("📊 Channel Power Table")
+
+        # Fix capitalization mismatch (Muse project uses capitalized keys)
+        cap_band_cols = [b.capitalize() for b in band_cols]
+
+        # Round values to 3 decimals
+        rounded_abs_df = abs_df.copy()
+        rounded_rel_df = rel_df.copy()
+        rounded_abs_df[cap_band_cols] = rounded_abs_df[cap_band_cols].round(3)
+        rounded_rel_df[cap_band_cols] = rounded_rel_df[cap_band_cols].round(3)
+
+        # Format for UI display
+        display_abs_df = rounded_abs_df.copy()
+        display_rel_df = rounded_rel_df.copy()
+        display_abs_df[cap_band_cols] = display_abs_df[cap_band_cols].applymap(lambda x: f"{x:.3f}")
+        display_rel_df[cap_band_cols] = display_rel_df[cap_band_cols].applymap(lambda x: f"{x:.3f}")
+
+        # --- Display Tables ---
         st.subheader("Absolute Power per Channel")
-        st.dataframe(abs_df, use_container_width=True)
+        st.dataframe(display_abs_df, use_container_width=True)
 
         st.subheader("Relative Power per Channel")
-        st.dataframe(rel_df, use_container_width=True)
+        st.dataframe(display_rel_df, use_container_width=True)
 
+        # --- Export Section ---
         st.markdown("### 📝 Enter Your Name for File Export")
         user_name = st.text_input("Name (used for filename)", value="", placeholder="e.g. Ryan")
 
@@ -270,6 +288,7 @@ if uploaded_csv:
             base_name = f"{user_name}_OtakQu_Muse_{timestamp}"
 
             st.markdown("### 💾 Download Processed EEG Data")
+
             st.download_button(
                 label="⬇️ Download Filtered EEG CSV",
                 data=filtered_df.to_csv(index=False).encode("utf-8"),
@@ -279,17 +298,18 @@ if uploaded_csv:
 
             st.download_button(
                 label="⬇️ Download Absolute Power CSV",
-                data=abs_df.to_csv(index=False).encode("utf-8"),
+                data=rounded_abs_df.to_csv(index=False).encode("utf-8"),
                 file_name=f"{base_name}_ABS.csv",
                 mime="text/csv"
             )
 
             st.download_button(
                 label="⬇️ Download Relative Power CSV",
-                data=rel_df.to_csv(index=False).encode("utf-8"),
+                data=rounded_rel_df.to_csv(index=False).encode("utf-8"),
                 file_name=f"{base_name}_REL.csv",
                 mime="text/csv"
             )
+
 
 else:
     st.info("📥 Please upload your raw Muse 2 EEG CSV file to begin.")
