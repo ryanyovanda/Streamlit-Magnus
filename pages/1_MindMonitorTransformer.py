@@ -41,13 +41,17 @@ def compute_region_stats(df):
 
         for band in band_cols:
             col_name = f"{bands[band]}_{ch}"
-            val = df[col_name].dropna().mean()
+            if col_name in df.columns:
+                val = df[col_name].dropna().mean()
+            else:
+                val = np.nan
             band_values[band] = val
             ch_abs[band] = val
 
-        total_power = sum(band_values.values())
+        total_power = sum([v for v in band_values.values() if not np.isnan(v)])
         for band in band_cols:
-            ch_rel[band] = band_values[band] / total_power if total_power else 0
+            val = band_values[band]
+            ch_rel[band] = val / total_power if total_power and not np.isnan(val) else 0
 
         abs_data.append(ch_abs)
         rel_data.append(ch_rel)
@@ -68,14 +72,33 @@ if uploaded_csv:
         time_axis = pd.date_range("2025-06-18 15:10", periods=300, freq='1S')
         line_data = pd.DataFrame({"Time": time_axis})
 
+        skipped_bands = []
+
         for band in band_cols:
             band_vals = []
             for ch in channels:
-                val = raw_df[f"{bands[band]}_{ch}"].dropna().mean()
-                band_vals.append(val)
-            avg = np.mean(band_vals)
+                col = f"{bands[band]}_{ch}"
+                if col in raw_df.columns:
+                    val = raw_df[col].dropna().mean()
+                    if not np.isnan(val):
+                        band_vals.append(val)
+
+            if not band_vals:
+                skipped_bands.append(band)
+                continue  # skip plotting this band
+
+            avg = np.nanmean(band_vals)
+            if not np.isfinite(avg) or avg <= 0:
+                avg = 1e-6  # fallback to safe value
+            noise = np.random.normal(0, avg * 0.1, 300)
+
+            if np.isnan(avg) or avg == 0:
+                avg = 1e-6
             noise = np.random.normal(0, avg * 0.1, 300)
             line_data[band] = avg + noise
+
+        if skipped_bands:
+            st.warning(f"⚠️ Skipped bands due to missing data: {', '.join(skipped_bands)}")
 
         fig_line = go.Figure()
         color_map = {
@@ -83,11 +106,12 @@ if uploaded_csv:
             'alpha': 'green', 'beta': 'blue', 'gamma': 'orange'
         }
         for band in band_cols:
-            fig_line.add_trace(go.Scatter(
-                x=line_data['Time'], y=line_data[band],
-                mode='lines', name=band.capitalize(),
-                line=dict(color=color_map[band])
-            ))
+            if band in line_data.columns:
+                fig_line.add_trace(go.Scatter(
+                    x=line_data['Time'], y=line_data[band],
+                    mode='lines', name=band.capitalize(),
+                    line=dict(color=color_map[band])
+                ))
         fig_line.update_layout(
             title="Absolute Brain Waves",
             xaxis_title="Time",
@@ -101,23 +125,30 @@ if uploaded_csv:
 
         def render_region_plot(region1, region2, title, key):
             fig = go.Figure()
-            max_val = max([
-                abs(abs_df.set_index("channel").loc[region_map[region1], band].mean()) for band in band_cols
-            ] + [
-                abs(abs_df.set_index("channel").loc[region_map[region2], band].mean()) for band in band_cols
-            ])
+            try:
+                max_val = max([
+                    abs(abs_df.set_index("channel").loc[region_map[region1], band].mean()) for band in band_cols
+                ] + [
+                    abs(abs_df.set_index("channel").loc[region_map[region2], band].mean()) for band in band_cols
+                ])
+            except:
+                st.error(f"Unable to render {title} due to missing data.")
+                return
 
             for i, band in enumerate(band_cols):
-                val1 = abs_df.set_index("channel").loc[region_map[region1], band].mean()
-                val2 = abs_df.set_index("channel").loc[region_map[region2], band].mean()
-                fig.add_trace(go.Bar(
-                    y=[band], x=[-val1], name=region1 if i == 0 else None,
-                    orientation='h', marker_color='blue', showlegend=(i == 0)
-                ))
-                fig.add_trace(go.Bar(
-                    y=[band], x=[val2], name=region2 if i == 0 else None,
-                    orientation='h', marker_color='red', showlegend=(i == 0)
-                ))
+                try:
+                    val1 = abs_df.set_index("channel").loc[region_map[region1], band].mean()
+                    val2 = abs_df.set_index("channel").loc[region_map[region2], band].mean()
+                    fig.add_trace(go.Bar(
+                        y=[band], x=[-val1], name=region1 if i == 0 else None,
+                        orientation='h', marker_color='blue', showlegend=(i == 0)
+                    ))
+                    fig.add_trace(go.Bar(
+                        y=[band], x=[val2], name=region2 if i == 0 else None,
+                        orientation='h', marker_color='red', showlegend=(i == 0)
+                    ))
+                except:
+                    continue
 
             fig.update_layout(
                 barmode='relative',
@@ -143,26 +174,29 @@ if uploaded_csv:
         for i, band in enumerate(band_cols):
             with cols[i]:
                 st.markdown(f"**{band}**")
-                left = abs_df.set_index("channel").loc[region_map["Left"], band].mean()
-                right = abs_df.set_index("channel").loc[region_map["Right"], band].mean()
-                rel_percent = rel_df.set_index("channel")[band].mean() * 100
+                try:
+                    left = abs_df.set_index("channel").loc[region_map["Left"], band].mean()
+                    right = abs_df.set_index("channel").loc[region_map["Right"], band].mean()
+                    rel_percent = rel_df.set_index("channel")[band].mean() * 100
+                    scaled_value = (left + right)
 
-                scaled_value = (left + right)
-                st.plotly_chart(go.Figure(go.Indicator(
-                    mode="gauge+number",
-                    value=scaled_value,
-                    number={'valueformat': '.2f'},
-                    title={'text': "Abs"},
-                    gauge={'axis': {'range': [0, 1]}, 'bar': {'color': "green"}}
-                )), use_container_width=True, key=f"{band}_abs")
+                    st.plotly_chart(go.Figure(go.Indicator(
+                        mode="gauge+number",
+                        value=scaled_value,
+                        number={'valueformat': '.2f'},
+                        title={'text': "Abs"},
+                        gauge={'axis': {'range': [0, 1]}, 'bar': {'color': "green"}}
+                    )), use_container_width=True, key=f"{band}_abs")
 
-                st.plotly_chart(go.Figure(go.Indicator(
-                    mode="gauge+number",
-                    value=rel_percent,
-                    number={'suffix': '%', 'valueformat': '.1f'},
-                    title={'text': "Rel"},
-                    gauge={'axis': {'range': [0, 100]}}
-                )), use_container_width=True, key=f"{band}_rel")
+                    st.plotly_chart(go.Figure(go.Indicator(
+                        mode="gauge+number",
+                        value=rel_percent,
+                        number={'suffix': '%', 'valueformat': '.1f'},
+                        title={'text': "Rel"},
+                        gauge={'axis': {'range': [0, 100]}}
+                    )), use_container_width=True, key=f"{band}_rel")
+                except:
+                    st.warning(f"{band} gauge could not be rendered due to missing values.")
 
     elif page == "Details & Downloads":
         st.header("📊 Channel Power Table")
