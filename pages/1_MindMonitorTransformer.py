@@ -4,7 +4,6 @@ import numpy as np
 import plotly.graph_objects as go
 from datetime import datetime
 
-
 # --- Config ---
 st.set_page_config(page_title="EEG Muse 2 Dashboard", layout="wide")
 st.title("🧠 Peep Brain Dashboard Muse")
@@ -20,7 +19,7 @@ bands = {
     "beta": "Beta",
     "gamma": "Gamma",
 }
-band_cols = list(bands.values())
+band_cols = list(bands.keys())
 channels = ["TP9", "AF7", "AF8", "TP10"]
 
 region_map = {
@@ -36,12 +35,12 @@ def compute_region_stats(df):
     rel_data = []
 
     for ch in channels:
-        ch_abs = {"Channel": ch}
-        ch_rel = {"Channel": ch}
+        ch_abs = {"channel": ch}
+        ch_rel = {"channel": ch}
         band_values = {}
 
         for band in band_cols:
-            col_name = f"{band}_{ch}"
+            col_name = f"{bands[band]}_{ch}"
             val = df[col_name].dropna().mean()
             band_values[band] = val
             ch_abs[band] = val
@@ -72,18 +71,18 @@ if uploaded_csv:
         for band in band_cols:
             band_vals = []
             for ch in channels:
-                val = raw_df[f"{band}_{ch}"].dropna().mean()
+                val = raw_df[f"{bands[band]}_{ch}"].dropna().mean()
                 band_vals.append(val)
             avg = np.mean(band_vals)
             noise = np.random.normal(0, avg * 0.1, 300)
-            line_data[band.lower()] = avg + noise
+            line_data[band] = avg + noise
 
         fig_line = go.Figure()
         color_map = {
             'delta': 'red', 'theta': 'purple',
             'alpha': 'green', 'beta': 'blue', 'gamma': 'orange'
         }
-        for band in bands:
+        for band in band_cols:
             fig_line.add_trace(go.Scatter(
                 x=line_data['Time'], y=line_data[band],
                 mode='lines', name=band.capitalize(),
@@ -103,14 +102,14 @@ if uploaded_csv:
         def render_region_plot(region1, region2, title, key):
             fig = go.Figure()
             max_val = max([
-                abs(abs_df.set_index("Channel").loc[region_map[region1], band].mean()) for band in band_cols
+                abs(abs_df.set_index("channel").loc[region_map[region1], band].mean()) for band in band_cols
             ] + [
-                abs(abs_df.set_index("Channel").loc[region_map[region2], band].mean()) for band in band_cols
+                abs(abs_df.set_index("channel").loc[region_map[region2], band].mean()) for band in band_cols
             ])
 
             for i, band in enumerate(band_cols):
-                val1 = abs_df.set_index("Channel").loc[region_map[region1], band].mean()
-                val2 = abs_df.set_index("Channel").loc[region_map[region2], band].mean()
+                val1 = abs_df.set_index("channel").loc[region_map[region1], band].mean()
+                val2 = abs_df.set_index("channel").loc[region_map[region2], band].mean()
                 fig.add_trace(go.Bar(
                     y=[band], x=[-val1], name=region1 if i == 0 else None,
                     orientation='h', marker_color='blue', showlegend=(i == 0)
@@ -136,17 +135,17 @@ if uploaded_csv:
 
         # --- Gauges ---
         st.markdown("### 🕹️ Average Band Power Gauges")
-        abs_df["Total"] = abs_df[band_cols].sum(axis=1)
-        total_abs_power = abs_df["Total"].sum()
-        abs_df["Relative"] = abs_df["Total"] / total_abs_power * 100
+        abs_df["total"] = abs_df[band_cols].sum(axis=1)
+        total_abs_power = abs_df["total"].sum()
+        abs_df["relative"] = abs_df["total"] / total_abs_power * 100
 
         cols = st.columns(5)
         for i, band in enumerate(band_cols):
             with cols[i]:
                 st.markdown(f"**{band}**")
-                left = abs_df.set_index("Channel").loc[region_map["Left"], band].mean()
-                right = abs_df.set_index("Channel").loc[region_map["Right"], band].mean()
-                rel_percent = rel_df.set_index("Channel")[band].mean() * 100
+                left = abs_df.set_index("channel").loc[region_map["Left"], band].mean()
+                right = abs_df.set_index("channel").loc[region_map["Right"], band].mean()
+                rel_percent = rel_df.set_index("channel")[band].mean() * 100
 
                 scaled_value = (left + right)
                 st.plotly_chart(go.Figure(go.Indicator(
@@ -166,55 +165,37 @@ if uploaded_csv:
                 )), use_container_width=True, key=f"{band}_rel")
 
     elif page == "Details & Downloads":
-            st.header("📊 Channel Power Table")
+        st.header("📊 Channel Power Table")
+        st.subheader("Absolute Power per Channel")
+        st.dataframe(abs_df, use_container_width=True)
 
-            # Round values to 3 decimals
-            rounded_abs_df = abs_df.copy()
-            rounded_rel_df = rel_df.copy()
-            rounded_abs_df[band_cols] = rounded_abs_df[band_cols].round(3)
-            rounded_rel_df[band_cols] = rounded_rel_df[band_cols].round(3)
+        st.subheader("Relative Power per Channel")
+        st.dataframe(rel_df, use_container_width=True)
 
-            # Format for display (show trailing 0s like 0.150)
-            display_abs_df = rounded_abs_df.copy()
-            display_rel_df = rounded_rel_df.copy()
-            display_abs_df[band_cols] = display_abs_df[band_cols].applymap(lambda x: f"{x:.3f}")
-            display_rel_df[band_cols] = display_rel_df[band_cols].applymap(lambda x: f"{x:.3f}")
+        st.markdown("### 📝 Enter Your Name for File Export")
+        user_name = st.text_input("Name (used for filename)", value="", placeholder="e.g. Ryan")
 
-            # --- Show rounded tables with full 3-digit formatting
-            st.subheader("Absolute Power per Channel")
-            st.dataframe(display_abs_df, use_container_width=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+        input_filename = uploaded_csv.name.rsplit('.', 1)[0] if uploaded_csv else "EEG"
 
-            st.subheader("Relative Power per Channel")
-            st.dataframe(display_rel_df, use_container_width=True)
+        if user_name.strip() == "":
+            st.warning("⚠️ Please enter your name to enable download.")
+        else:
+            base_name = f"{user_name}_OtakQu_MindMonitor_{timestamp}"
 
-            # --- Export section
-            st.markdown("### 📝 Enter Your Name for File Export")
-            user_name = st.text_input("Name (used for filename)", value="", placeholder="e.g. Ryan")
+            st.markdown("### 💾 Download Processed EEG Data")
+            st.download_button(
+                label="⬇️ Download Absolute Power CSV",
+                data=abs_df.to_csv(index=False).encode("utf-8"),
+                file_name=f"{base_name}_ABS.csv",
+                mime="text/csv"
+            )
 
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-            input_filename = uploaded_csv.name.rsplit('.', 1)[0] if uploaded_csv else "EEG"
-
-            if user_name.strip() == "":
-                st.warning("⚠️ Please enter your name to enable download.")
-            else:
-                base_name = f"{user_name}_OtakQu_MindMonitor_{timestamp}"
-
-                st.markdown("### 💾 Download Processed EEG Data")
-
-                st.download_button(
-                    label="⬇️ Download Absolute Power CSV",
-                    data=rounded_abs_df.to_csv(index=False).encode("utf-8"),
-                    file_name=f"{base_name}_ABS.csv",
-                    mime="text/csv"
-                )
-
-                st.download_button(
-                    label="⬇️ Download Relative Power CSV",
-                    data=rounded_rel_df.to_csv(index=False).encode("utf-8"),
-                    file_name=f"{base_name}_REL.csv",
-                    mime="text/csv"
-                )
-
-
+            st.download_button(
+                label="⬇️ Download Relative Power CSV",
+                data=rel_df.to_csv(index=False).encode("utf-8"),
+                file_name=f"{base_name}_REL.csv",
+                mime="text/csv"
+            )
 else:
     st.info("📥 Please upload your EEG MindMonitor CSV file to begin.")
